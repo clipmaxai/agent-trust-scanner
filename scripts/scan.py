@@ -61,7 +61,6 @@ CODE_PATTERNS_JS = [
 
 CODE_PATTERNS_SH = [
     ("HIGH", re.compile(r'curl\s+.*\|\s*(?:bash|sh)', re.I), "Piping curl to shell"),
-    ("HIGH", re.compile(r'(?:curl|wget)\s+.*https?://\S+', re.I), "Network request"),
     ("HIGH", re.compile(r'/etc/passwd|~/\.ssh', re.I), "Sensitive file access"),
     ("MED", re.compile(r'\beval\b'), "eval usage in shell"),
     ("HIGH", re.compile(r'base64'), "Base64 encoding (possible exfil)"),
@@ -103,6 +102,17 @@ def scan_file(filepath, findings, domains):
             for i, line in enumerate(lines, 1):
                 if pat.search(line):
                     findings.append(("CODE_ANALYSIS", sev, rel, i, desc))
+
+    # Shell scripts: flag curl/wget to unknown domains only
+    if ext == '.sh':
+        for i, line in enumerate(lines, 1):
+            if re.search(r'(?:curl|wget)\s+', line, re.I):
+                line_domains = DOMAIN_RE.findall(line)
+                unsafe_line_domains = [d for d in line_domains if d not in SAFE_DOMAINS]
+                if unsafe_line_domains:
+                    findings.append(("CODE_ANALYSIS", "HIGH", rel, i, f"Network request to unknown domain: {', '.join(unsafe_line_domains)}"))
+                elif line_domains:
+                    findings.append(("CODE_ANALYSIS", "LOW", rel, i, "Network request to safe domain"))
 
     # Check for env var specifics in code
     if ext == '.py':
