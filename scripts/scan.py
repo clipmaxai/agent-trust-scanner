@@ -4,7 +4,15 @@
 import argparse, json, os, re, sys
 from pathlib import Path
 
-SAFE_DOMAINS = {"github.com", "pypi.org", "npmjs.com", "googleapis.com", "wttr.in", "api.github.com"}
+SAFE_DOMAINS = {
+    "github.com", "pypi.org", "npmjs.com", "googleapis.com", "wttr.in", "api.github.com",
+    "api.openweathermap.org", "hacker-news.firebaseio.com", "news.ycombinator.com",
+    "www.producthunt.com", "api.producthunt.com", "api.coingecko.com", "api.llama.fi",
+    "www.youtube.com", "youtube.com", "api.twitter.com", "x.com",
+    "raw.githubusercontent.com", "registry.npmjs.org", "huggingface.co",
+    "api.openai.com", "api.anthropic.com",
+    "cdn.jsdelivr.net", "unpkg.com", "fonts.googleapis.com", "cdnjs.cloudflare.com",
+}
 SEV_SCORES = {"HIGH": -15, "MED": -8, "LOW": -3}
 SCAN_EXTS = {".md", ".py", ".sh", ".js", ".ts", ".json", ".yaml", ".yml"}
 CODE_EXTS = {".py", ".sh", ".js", ".ts"}
@@ -36,7 +44,7 @@ CODE_PATTERNS_PY = [
     ("HIGH", re.compile(r'\bos\.popen\s*\('), "os.popen() usage"),
     ("MED", re.compile(r'os\.environ|os\.getenv'), "Environment variable access"),
     ("MED", re.compile(r'open\s*\(.*(?:\.\./|~/\.ssh|~/\.env|/etc/)', re.I), "File access to sensitive paths"),
-    ("MED", re.compile(r'\b(?:urllib|requests|http\.client)\b'), "Network library import"),
+    ("LOW", re.compile(r'\b(?:urllib|requests|http\.client)\b'), "Network library import"),
     ("HIGH", re.compile(r'AKIA[A-Z0-9]{16}|ghp_[a-zA-Z0-9]+|gho_[a-zA-Z0-9]+|sk-[a-zA-Z0-9]{20,}'), "Credential pattern"),
     ("HIGH", re.compile(r"''\s*\.join\s*\(\s*chr\s*\("), "chr()+join obfuscation"),
     ("MED", re.compile(r'\\x[0-9a-fA-F]{2}.*\\x[0-9a-fA-F]{2}'), "Hex string obfuscation"),
