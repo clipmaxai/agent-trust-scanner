@@ -47,6 +47,11 @@ CODE_PATTERNS_PY = [
     ("LOW", re.compile(r'\b(?:urllib|requests|http\.client)\b'), "Network library import"),
     ("HIGH", re.compile(r'AKIA[A-Z0-9]{16}|ghp_[a-zA-Z0-9]+|gho_[a-zA-Z0-9]+|sk-[a-zA-Z0-9]{20,}'), "Credential pattern"),
     ("HIGH", re.compile(r"''\s*\.join\s*\(\s*chr\s*\("), "chr()+join obfuscation"),
+    ("HIGH", re.compile(r'""\s*\.join\s*\(\s*\[?\s*chr\s*\('), "chr()+join obfuscation (double quotes)"),
+    ("HIGH", re.compile(r'__import__\s*\('), "Dynamic __import__() usage"),
+    ("HIGH", re.compile(r'globals\s*\(\s*\)\s*\['), "Indirect function call via globals()"),
+    ("HIGH", re.compile(r'getattr\s*\(\s*__builtins__'), "Indirect function call via getattr"),
+    ("HIGH", re.compile(r'os\.path\.join\s*\(.*(?:\.\.|expanduser).*(?:\.ssh|etc.{0,5}shadow|etc.{0,5}passwd)', re.I), "Path traversal or sensitive path via os.path.join"),
     ("MED", re.compile(r'\\x[0-9a-fA-F]{2}.*\\x[0-9a-fA-F]{2}'), "Hex string obfuscation"),
 ]
 
@@ -65,6 +70,21 @@ CODE_PATTERNS_SH = [
     ("MED", re.compile(r'\beval\b'), "eval usage in shell"),
     ("HIGH", re.compile(r'base64'), "Base64 encoding (possible exfil)"),
 ]
+
+
+def _edit_distance(a, b):
+    """Simple Levenshtein distance."""
+    if len(a) < len(b):
+        return _edit_distance(b, a)
+    if not b:
+        return len(a)
+    prev = list(range(len(b) + 1))
+    for i, ca in enumerate(a):
+        curr = [i + 1]
+        for j, cb in enumerate(b):
+            curr.append(min(prev[j + 1] + 1, curr[j] + 1, prev[j] + (ca != cb)))
+        prev = curr
+    return prev[-1]
 
 
 def scan_file(filepath, findings, domains):
@@ -134,6 +154,19 @@ def scan_deps(target, findings):
         for d in deps:
             if len(d) < 3:
                 findings.append(("DEPENDENCIES", "HIGH", str(req), 0, f"Suspiciously short package name: '{d}' (typosquat risk)"))
+        # Typosquat detection
+        KNOWN_PACKAGES = {
+            "requests", "colorama", "pillow", "numpy", "pandas",
+            "flask", "django", "boto3", "openai", "anthropic", "httpx",
+            "aiohttp", "pyyaml", "pytest", "setuptools", "urllib3",
+            "beautifulsoup4", "selenium", "scrapy", "paramiko", "cryptography",
+        }
+        for d in deps:
+            dl = d.lower().replace('-', '').replace('_', '')
+            for known in KNOWN_PACKAGES:
+                kl = known.lower().replace('-', '').replace('_', '')
+                if dl != kl and len(dl) > 3 and _edit_distance(dl, kl) <= 2:
+                    findings.append(("DEPENDENCIES", "HIGH", str(req), 0, f"Possible typosquat: '{d}' (similar to '{known}')"))
 
     pkg = Path(target) / 'package.json'
     if pkg.exists():
